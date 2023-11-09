@@ -1,6 +1,5 @@
 #include <VMA430_GPS.h>     // Include the GPS module library
 #include <HardwareSerial.h> // Include the software serial library
-#include <SoftwareSerial.h>
 
 HardwareSerial ss(2); // GPS RX to ESP 17, GPS TX to ESP 16
 VMA430_GPS gps(&ss);     // Pass the softwareserial connection info the the GPS module library
@@ -41,4 +40,3 @@ void loop()
 
   delay(10);
 }
-
