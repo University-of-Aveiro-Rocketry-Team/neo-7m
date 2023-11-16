@@ -6,7 +6,7 @@ VMA430_GPS gps(&ss);     // Pass the softwareserial connection info the the GPS 
 
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("hello");
   gps.begin(9600); // Sets up the GPS module to communicate with the Arduino over serial at 9600 baud
   gps.setUBXNav(); // Enable the UBX mavigation messages to be sent from the GPS module
