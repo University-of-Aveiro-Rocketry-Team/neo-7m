@@ -7,7 +7,7 @@
 #include "minmea.h"
 
 #define UART_NUM UART_NUM_1
-#define BUF_SIZE (1024)
+#define BUF_SIZE (2048)
 
 
 void app_main()
@@ -25,7 +25,11 @@ void app_main()
     uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
 
     // Buffer to store a complete NMEA sentence
-    char nmea_sentence[BUF_SIZE];
+    char *nmea_sentence = (char *)malloc(BUF_SIZE/2);
+    if (!nmea_sentence)
+    {
+        ESP_LOGE("GPS", "Failed to allocate memory for NMEA sentence");
+    }
     int nmea_index = 0;
 
     while (1)
@@ -37,9 +41,8 @@ void app_main()
         if (length > 0)
         {
             // print the data from uart
-            ESP_LOGI("GPS", "Received data: %.*s\n\n\n", length, data);
+            // ESP_LOGI("GPS", "Received data: %.*s\n\n\n", length, data);
 
-            /*
             for (int i = 0; i < length; i++)
             {
                 // Append character to NMEA sentence buffer
@@ -49,27 +52,36 @@ void app_main()
                 if (data[i] == '\n')
                 {
                     nmea_sentence[nmea_index] = '\0'; // Null-terminate the sentence
-                    // ESP_LOGI("GPS", "Complete NMEA Sentence: %s", nmea_sentence);
 
-                    if (strncmp(nmea_sentence, "$GPGGA", 6) == 0)
+                    if (strncmp(nmea_sentence, "$GPRMC", 6) == 0)
+                    {
+                        struct minmea_sentence_rmc rmc;
+                        if (minmea_parse_rmc(&rmc, nmea_sentence))
+                        {
+                            if (rmc.valid)
+                            {
+                                ESP_LOGI("GPS", "$GPRMC Latitude: %f \nLongitude: %f \nSpeed: %f \n Date: %d-%d-%d\n Time: %d:%d:%d\n",
+                                        minmea_tocoord(&rmc.latitude), minmea_tocoord(&rmc.longitude), minmea_tofloat(&rmc.speed), rmc.date.day, rmc.date.month, rmc.date.year, rmc.time.hours, rmc.time.minutes, rmc.time.seconds);
+                            }
+                            else
+                            {
+                                ESP_LOGE("GPS", "Invalid RMC");
+                            }
+                        }
+                    }
+                    else if (strncmp(nmea_sentence, "$GPGGA", 6) == 0)
                     {
                         struct minmea_sentence_gga gga;
                         if (minmea_parse_gga(&gga, nmea_sentence))
                         {
-                            if (gga.fix_quality > 0) // Check if the fix quality is good
+                            if (gga.fix_quality > 0)
                             {
-                                ESP_LOGI("GPS", "Valid GGA: latitude=%.8f, longitude=%.8f",
-                                         minmea_tocoord(&gga.latitude),
-                                         minmea_tocoord(&gga.longitude));
-                                // Display the time
-                                ESP_LOGI("GPS", "UTC Time: %02d:%02d:%02d",
-                                         gga.time.hours,
-                                         gga.time.minutes,
-                                         gga.time.seconds);
+                                ESP_LOGI("GPS", "$GPGGA Latitude: %f \nLongitude: %f \nAltitude: %f \nFix quality: %d \nTime: %d:%d:%d \nSatellites Tracked: %d \nhdop: %f \nHeight of geoid: %f \n",
+                                        minmea_tocoord(&gga.latitude), minmea_tocoord(&gga.longitude), minmea_tofloat(&gga.altitude), gga.fix_quality, gga.time.hours, gga.time.minutes, gga.time.seconds, gga.satellites_tracked, minmea_tofloat(&gga.hdop), minmea_tofloat(&gga.height));
                             }
                             else
                             {
-                                ESP_LOGI("GPS", "Invalid GGA");
+                                ESP_LOGE("GPS", "Invalid GGA");
                             }
                         }
                     }
@@ -78,9 +90,14 @@ void app_main()
                         struct minmea_sentence_vtg vtg;
                         if (minmea_parse_vtg(&vtg, nmea_sentence))
                         {
-                            ESP_LOGI("GPS", "Speed over ground: %.2f knots, %.2f km/h",
-                                     minmea_tofloat(&vtg.speed_knots),
-                                     minmea_tofloat(&vtg.speed_kph));
+                            if (vtg.faa_mode != MINMEA_FAA_MODE_NOT_VALID)
+                            {
+                                // HEADING ISN'T WORKING BUT I THINK IT SHOULD, TO BE TESTED
+                                ESP_LOGI("GPS", "$GPVTG True Track: %f \nSpeed: %f \n",
+                                        minmea_tofloat(&vtg.true_track_degrees), minmea_tofloat(&vtg.speed_kph));
+                            } else {
+                                ESP_LOGE("GPS", "Invalid VTG");
+                            }
                         }
                     }
                     else if (strncmp(nmea_sentence, "$GPGSA", 6) == 0)
@@ -88,28 +105,72 @@ void app_main()
                         struct minmea_sentence_gsa gsa;
                         if (minmea_parse_gsa(&gsa, nmea_sentence))
                         {
-                            ESP_LOGI("GPS", "Fix type: %d, PDOP: %.2f, HDOP: %.2f, VDOP: %.2f",
-                                     gsa.fix_type,
-                                     minmea_tofloat(&gsa.pdop),
-                                     minmea_tofloat(&gsa.hdop),
-                                     minmea_tofloat(&gsa.vdop));
+                            /*
+                            if (gsa.fix_type > 0)
+                            {
+                                // Display the mode (Manual or Automatic)
+                                ESP_LOGI("GPS", "$GPGSA Mode: %c \nFix type: %d \nPDOP: %.2f \nHDOP: %.2f \nVDOP: %.2f\n",
+                                         gsa.mode, gsa.fix_type, minmea_tofloat(&gsa.pdop), minmea_tofloat(&gsa.hdop), minmea_tofloat(&gsa.vdop));
+
+                                // Display the IDs of satellites used for the fix
+                                ESP_LOGI("GPS", "Satellites used for fix:");
+                                for (int i = 0; i < 12; i++)
+                                {
+                                    if (gsa.sats[i] != 0)
+                                    { // Satellite IDs are non-zero
+                                        ESP_LOGI("GPS", "Satellite ID: %d", gsa.sats[i]);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                ESP_LOGE("GPS", "Invalid GSA");
+                            }
+                            */
                         }
                     }
-                    // else if (strncmp(nmea_sentence, "$GPGSV", 6) == 0)
-                    // {
-                    //     struct minmea_sentence_gsv gsv;
-                    //     if (minmea_parse_gsv(&gsv, nmea_sentence))
-                    //     {
-                    //         ESP_LOGI("GPS", "Satellite %d: PRN %d, Elevation %d, Azimuth %d, SNR %d",
-                    //                  i + 1, gsv.sats[i].nr, gsv.sats[i].elevation, gsv.sats[i].azimuth, gsv.sats[i].snr);
-                    //     }
-                    // }
+                    else if (strncmp(nmea_sentence, "$GPGLL", 6) == 0)
+                    {
+                        struct minmea_sentence_gll gll;
+                        if (minmea_parse_gll(&gll, nmea_sentence))
+                        {
+                            /*
+                            if (gll.status == 'A')
+                            {
+                                ESP_LOGI("GPS", "$GPGLL Latitude: %f \nLongitude: %f \nTime: %d:%d:%d \nStatus: %c \nMode: %c\n",
+                                        minmea_tocoord(&gll.latitude), minmea_tocoord(&gll.longitude), gll.time.hours, gll.time.minutes, gll.time.seconds, gll.status, gll.mode);
+                            }
+                            else
+                            {
+                                ESP_LOGE("GPS", "Invalid GLL");
+                            }
+                            */
+                        }
+                    }
+                    else if (strncmp(nmea_sentence, "$GPGSV", 6) == 0)
+                    {
+                        struct minmea_sentence_gsv gsv;
+                        if (minmea_parse_gsv(&gsv, nmea_sentence))
+                        {
+                            /*
+                            ESP_LOGI("GPS", "$GSV: message %d of %d", gsv.msg_nr, gsv.total_msgs);
+                            ESP_LOGI("GPS", "$GSV: satellites in view: %d", gsv.total_sats);
+                            for (int i = 0; i < 4; i++)
+                                ESP_LOGI("GPS", "$GSV: sat nr %d, elevation: %d, azimuth: %d, snr: %d dbm",
+                                        gsv.sats[i].nr,
+                                        gsv.sats[i].elevation,
+                                        gsv.sats[i].azimuth,
+                                        gsv.sats[i].snr);
+                            */
+                        }
+                    }
 
                     // Reset the index for the next sentence
                     nmea_index = 0;
                 }
-            } */
-        }
-        vTaskDelay(4000 / portTICK_PERIOD_MS);
+            }
     }
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    free(nmea_sentence);
 }
