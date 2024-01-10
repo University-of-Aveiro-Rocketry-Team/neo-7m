@@ -5,11 +5,29 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "minmea.h"
+#include "neo-7m.h"
 
 #define UART_NUM UART_NUM_1
 #define BUF_SIZE (2048)
 
+neo7m gps_data;
 
+void app_main()
+{
+    neo7m_uart_initialize(9600, 25, 26, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    while (1)
+    {
+        neo7m_uart_read(&gps_data);
+
+        // Print the data
+        ESP_LOGI("GPS", "Latitude: %f \nLongitude: %f \nSpeed: %f \n Date: %ud-%ud-%ud\n Time: %ud:%ud:%ud\n",
+                 gps_data.latitude, gps_data.longitude, gps_data.speed, gps_data.day, gps_data.month, gps_data.year, gps_data.hours, gps_data.minutes, gps_data.seconds);
+
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+}
+
+/*
 void app_main()
 {
     uart_config_t uart_config = {
@@ -19,7 +37,7 @@ void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE};
     uart_param_config(UART_NUM, &uart_config);
-    uart_set_pin(UART_NUM, 17, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_set_pin(UART_NUM, 25, 26, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     uart_driver_install(UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0);
 
     uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
@@ -37,7 +55,7 @@ void app_main()
         int length = 0;
         ESP_ERROR_CHECK(uart_get_buffered_data_len(UART_NUM, (size_t *)&length));
         length = uart_read_bytes(UART_NUM, data, length, 100 / portTICK_PERIOD_MS);
-        
+
         if (length > 0)
         {
             // print the data from uart
@@ -105,7 +123,6 @@ void app_main()
                         struct minmea_sentence_gsa gsa;
                         if (minmea_parse_gsa(&gsa, nmea_sentence))
                         {
-                            /*
                             if (gsa.fix_type > 0)
                             {
                                 // Display the mode (Manual or Automatic)
@@ -126,7 +143,6 @@ void app_main()
                             {
                                 ESP_LOGE("GPS", "Invalid GSA");
                             }
-                            */
                         }
                     }
                     else if (strncmp(nmea_sentence, "$GPGLL", 6) == 0)
@@ -134,7 +150,6 @@ void app_main()
                         struct minmea_sentence_gll gll;
                         if (minmea_parse_gll(&gll, nmea_sentence))
                         {
-                            /*
                             if (gll.status == 'A')
                             {
                                 ESP_LOGI("GPS", "$GPGLL Latitude: %f \nLongitude: %f \nTime: %d:%d:%d \nStatus: %c \nMode: %c\n",
@@ -144,7 +159,6 @@ void app_main()
                             {
                                 ESP_LOGE("GPS", "Invalid GLL");
                             }
-                            */
                         }
                     }
                     else if (strncmp(nmea_sentence, "$GPGSV", 6) == 0)
@@ -152,7 +166,6 @@ void app_main()
                         struct minmea_sentence_gsv gsv;
                         if (minmea_parse_gsv(&gsv, nmea_sentence))
                         {
-                            /*
                             ESP_LOGI("GPS", "$GSV: message %d of %d", gsv.msg_nr, gsv.total_msgs);
                             ESP_LOGI("GPS", "$GSV: satellites in view: %d", gsv.total_sats);
                             for (int i = 0; i < 4; i++)
@@ -161,7 +174,6 @@ void app_main()
                                         gsv.sats[i].elevation,
                                         gsv.sats[i].azimuth,
                                         gsv.sats[i].snr);
-                            */
                         }
                     }
 
@@ -169,8 +181,9 @@ void app_main()
                     nmea_index = 0;
                 }
             }
-    }
+        }
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     free(nmea_sentence);
 }
+*/
